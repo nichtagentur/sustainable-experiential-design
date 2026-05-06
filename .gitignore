@@ -1,0 +1,3 @@
+node_modules
+dist/images/*_raw.png
+images/*_raw.png
