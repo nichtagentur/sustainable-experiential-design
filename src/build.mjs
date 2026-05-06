@@ -39,7 +39,9 @@ const AUTHOR = {
 // unordered lists, ordered lists, ---, simple pipe tables, blockquote.
 
 function parseFrontmatter(src) {
-  const m = src.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  // Accept optional leading "---" — some auto-generated articles drop it.
+  let m = src.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!m) m = src.match(/^([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!m) return { meta: {}, body: src };
   const meta = {};
   const lines = m[1].split("\n");
@@ -434,15 +436,24 @@ async function build() {
   await fs.mkdir(path.join(distDir, "images"), { recursive: true });
   await fs.mkdir(path.join(distDir, "assets"), { recursive: true });
 
-  // Read articles
-  const articleFiles = ["01-honest-materials.md", "02-designing-for-disassembly.md", "03-five-reuse-patterns.md"];
+  // Read articles — original 3 first (canonical order) plus any auto-* additions
+  const baseFiles = ["01-honest-materials.md", "02-designing-for-disassembly.md", "03-five-reuse-patterns.md"];
+  const allFiles = (await fs.readdir(path.join(ROOT, "articles"))).filter((f) => f.endsWith(".md"));
+  const autoFiles = allFiles.filter((f) => f.startsWith("auto-")).sort();
+  const articleFiles = [...baseFiles, ...autoFiles];
   const articles = [];
   for (const f of articleFiles) {
     const src = await fs.readFile(path.join(ROOT, "articles", f), "utf8");
     const { meta, body } = parseFrontmatter(src);
-    const html = articlePage({ meta, body, slug: meta.slug });
-    await fs.writeFile(path.join(distDir, `${meta.slug}.html`), html);
-    articles.push({ ...meta, body });
+    if (!meta.slug) {
+      console.error(`skip ${f}: no slug in frontmatter`);
+      continue;
+    }
+    // auto-* articles use a slug prefix to avoid collisions with curated ones
+    const slug = f.startsWith("auto-") ? `auto-${meta.slug}` : meta.slug;
+    const html = articlePage({ meta, body, slug });
+    await fs.writeFile(path.join(distDir, `${slug}.html`), html);
+    articles.push({ ...meta, slug, body, isAuto: f.startsWith("auto-") });
   }
 
   // Index + about
